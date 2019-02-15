@@ -10,26 +10,32 @@ import (
 	"golang.org/x/image/colornames"
 	"log"
 	"net/url"
+	"os"
+	"sync"
 )
 
+type Players struct {
+	items map[string]*player.Player
+	lock *sync.Mutex
+}
 
 const width float64 = 1024
 const height float64= 768
 
-var players []player.Player
-
 var playerHeight float64 = 50
 var playerWidth float64 = 50
 
-
 var conn *websocket.Conn
 var movements = player.Movements{false, false, false, false}
+
+var players = Players{items: map[string]*player.Player{}, lock: &sync.Mutex{}}
 
 func playerImd() (imd *imdraw.IMDraw) {
 	imd = imdraw.New(nil)
 	imd.Color = pixel.RGB(255, 0, 0)
 
-	for _, p := range players {
+	players.lock.Lock()
+	for _, p := range players.items {
 		imd.Push(
 			pixel.V(p.X-playerWidth, p.Y-playerHeight),
 			pixel.V(p.X+playerWidth, p.Y+playerHeight),
@@ -37,13 +43,13 @@ func playerImd() (imd *imdraw.IMDraw) {
 
 		imd.Rectangle(0)
 	}
-
+	players.lock.Unlock()
 	return
 }
 
 func run() {
 	cfg := pixelgl.WindowConfig{
-		Title:  "Pixel Rocks!",
+		Title:  "Golang Multiplayer!",
 		Bounds: pixel.R(0, 0, width, height),
 		//Monitor: pixelgl.PrimaryMonitor(),
 		VSync: true,
@@ -83,10 +89,12 @@ func run() {
 
 func synchronizePositions(conn *websocket.Conn) {
 	for {
-		err := conn.ReadJSON(&players)
+		players.lock.Lock()
+		err := conn.ReadJSON(&players.items)
 		if err != nil {
 			log.Println("Error while reading positions")
 		}
+		players.lock.Unlock()
 	}
 }
 
@@ -95,7 +103,15 @@ func main() {
 
 	u := url.URL{Scheme: "ws", Host: "localhost:8080", Path: "/echo"}
 
-	conn, _, _ = websocket.DefaultDialer.Dial(u.String(), nil)
+
+	var err error
+	conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Print("Connection cannot be established, exiting....")
+		os.Exit(0)
+		// TODO: Handle error when ESCAPE (ESC)
+		// TODO: Handle error when connection closed by server
+	}
 
 	defer conn.Close()
 

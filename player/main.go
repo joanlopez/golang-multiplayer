@@ -8,6 +8,7 @@ type Movements struct {
 }
 
 type Player struct {
+	Id        string
 	X         float64
 	Y         float64
 	Speed     float64
